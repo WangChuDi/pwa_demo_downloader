@@ -1,5 +1,6 @@
 # Usage
 修改config.ini文件中的userid,access_token与demoPath路径，然后运行~
+
 Edit the userid ,access_token and demoPath in config.ini, then run it~
 ## Get userid and access_token
 userid 为你的steam64位id。如：http://steamcommunity.com/profiles/76561198159976336 
@@ -10,3 +11,4 @@ If you set steam URL, you can access https://steamid.io/lookup/ to get your stea
 
 access_token is the cookie in https://partner.wmpvp.com/#/login 
 
+![cookie](cookie.png)
