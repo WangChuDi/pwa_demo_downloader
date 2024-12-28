@@ -5,7 +5,6 @@ import os
 
 import configparser
 
-demoPath = './demo'  # 替换为实际demo解压路径
 url_getmatchid = 'https://pwaweblogin.wmpvp.com/user-info/recent-ladder-score-list'
 
 
@@ -124,7 +123,7 @@ for user in secs:
     
     # 批量下载demo文件
     for _ , demo_url in demo_urls.items():
-        download_and_extract(demo_url, demoPath)
+        download_and_extract(demo_url, cf.get(user,"demoPath"))
 
 
 
