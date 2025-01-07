@@ -70,12 +70,14 @@ def download_and_extract(url, demoPath):
     
     # 从URL中提取文件名
     filename = url.split('/')[-1]
-    
     #进入demoPath文件夹
     filename = os.path.join(demoPath, filename)
     if os.path.exists(filename):
         print(f"File {filename} already exists. Skipping download.")
         return
+    
+    #为文件名添加zip后缀
+    filename = filename + '.zip'
     # 下载文件
     local_filename = download_file(url, filename)
     # 解压文件
