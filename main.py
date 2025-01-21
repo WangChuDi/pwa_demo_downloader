@@ -38,8 +38,10 @@ def get_demo_url(match_id):
 
 
 def download_file(url, local_filename):
-    # 发起GET请求，设置stream=True以流式下载文件
+    # 确保目录存在
+    os.makedirs(os.path.dirname(local_filename), exist_ok=True)
     
+    # 发起GET请求，设置stream=True以流式下载文件
     with requests.get(url, stream=True) as r:
         r.raise_for_status()  # 确保请求成功
         if r.status_code == 200 and 'application/octet-stream' in r.headers.get('Content-Type', ''):  
@@ -104,7 +106,7 @@ for user in secs:
 
     params = {
         'access_token': access_token,
-        'size': 10,
+        'size': 20,
         'uid': userid
     }
 

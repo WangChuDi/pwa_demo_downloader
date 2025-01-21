@@ -1,0 +1,10 @@
+[yourself] #changeit
+userid=76561198159976336
+access_token=
+demoPath = ./demos/demo_yourself
+
+
+[advent] #changeit, access_token can be same with yourself
+userid=76561198159976336
+access_token=
+demoPath = ./demos/demo_advent
