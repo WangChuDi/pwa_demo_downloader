@@ -27,6 +27,43 @@ USER_AGENT = (
     'perfectworldarena/1.0.26051411 Chrome/80.0.3987.163 Electron/8.5.5 Safari/537.36'
 )
 
+# 自动探测 PvpAlive.dll 的常见安装路径（按优先级）。
+# 用户可在 config.ini 的 [global] 段用 pvp_alive_dll 字段显式覆盖。
+COMMON_DLL_PATHS = [
+    r"D:\ProgramFile\game\perfectworld\plugin\PvpAlive.dll",
+    r"C:\Program Files\perfectworld\plugin\PvpAlive.dll",
+    r"C:\Program Files (x86)\perfectworld\plugin\PvpAlive.dll",
+    r"D:\perfectworld\plugin\PvpAlive.dll",
+    r"C:\perfectworld\plugin\PvpAlive.dll",
+]
+
+# 启动时一次性解析，后续调签名时直接读这个
+PVP_ALIVE_DLL_PATH = ""
+
+
+def _resolve_dll_path(cf) -> str:
+    """优先 [global].pvp_alive_dll；否则按 COMMON_DLL_PATHS 探测；都失败则给出指引并退出。"""
+    configured = ""
+    if cf.has_section("global") and cf.has_option("global", "pvp_alive_dll"):
+        configured = cf.get("global", "pvp_alive_dll").strip()
+    if configured:
+        if os.path.isfile(configured):
+            return configured
+        sys.exit(
+            f"config.ini [global] pvp_alive_dll 指向的文件不存在: {configured}\n"
+            f"请检查路径，或留空让程序按常见安装位置自动探测。"
+        )
+    for p in COMMON_DLL_PATHS:
+        if os.path.isfile(p):
+            return p
+    sys.exit(
+        "找不到 PvpAlive.dll。请在 config.ini 加上:\n"
+        "  [global]\n"
+        "  pvp_alive_dll = <PvpAlive.dll 的绝对路径>\n"
+        "通常位于：完美对战平台客户端安装目录\\plugin\\PvpAlive.dll\n"
+        "(右键桌面/任务栏的「完美对战平台」快捷方式 → 打开文件所在位置即可定位)"
+    )
+
 
 def _swap_data_sign(randnum: str, ts: str, data: str) -> str:
     inner = json.dumps(
@@ -34,7 +71,7 @@ def _swap_data_sign(randnum: str, ts: str, data: str) -> str:
         separators=(",", ":"),
     )
     res = subprocess.run(
-        [PYTHON32_EXE, SIGN_HELPER, inner],
+        [PYTHON32_EXE, SIGN_HELPER, PVP_ALIVE_DLL_PATH, inner],
         capture_output=True, text=True, check=True,
     )
     sig = res.stdout.strip()
@@ -182,10 +219,12 @@ if not os.path.isfile(PYTHON32_EXE):
         f"请从 python.org 下载 python-3.12.x-embed-win32.zip 解压到 python32/。"
     )
 
-cf = configparser.ConfigParser()
+cf = configparser.ConfigParser(interpolation=None)
 cf.read("config.ini")
 
-secs = cf.sections()
+PVP_ALIVE_DLL_PATH = _resolve_dll_path(cf)
+
+secs = [s for s in cf.sections() if s.lower() != "global"]
 
 for user in secs:
     options = cf.options(user)

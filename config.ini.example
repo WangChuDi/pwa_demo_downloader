@@ -1,3 +1,9 @@
+[global]
+# PvpAlive.dll 的绝对路径。留空或删掉这一行则程序按常见默认安装路径自动探测。
+# Absolute path to PvpAlive.dll. Leave empty / omit to auto-detect common install locations.
+pvp_alive_dll = D:\ProgramFile\game\perfectworld\plugin\PvpAlive.dll
+
+
 [yourself] #changeit
 userid=76561198159976336
 access_token=
