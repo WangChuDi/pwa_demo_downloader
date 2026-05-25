@@ -1,4 +1,5 @@
 import requests
+import hashlib
 import json
 import zipfile
 import os
@@ -14,11 +15,10 @@ from cryptography.hazmat.primitives.padding import PKCS7
 
 url_getmatchid = 'https://pwaweblogin.wmpvp.com/user-info/recent-ladder-score-list'
 
-# 新版 PW 客户端 (>=1.0.26051411) 的签名算法已经被搬进 PvpAlive.dll (反作弊 DLL) 里
-# 并被 VMProtect 虚拟化保护,静态无法逆向。这里通过 ctypes 直接调用 PvpAlive.dll 的
-# swapData 导出函数;由于 PvpAlive.dll 是 32 位,需要用项目自带的 32 位 Python embeddable
-# 来跑桥接脚本 sign_helper.py。
+# demo URL 默认使用内置签名实现。
+# PvpAlive.dll 保留为 fallback 通道，可通过 PWA_SIGN_BACKEND=dll 强制使用。
 PVP_WEB_API_APPID = 20000
+PVP_SIGN_TAIL64 = "969c1bcfdc527c319157cc48f83b1d106ebdeca3e8d9763f1ae6b88dde9b3ea9"
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 PYTHON32_EXE = os.path.join(_ROOT, "python32", "python.exe")
 SIGN_HELPER = os.path.join(_ROOT, "sign_helper.py")
@@ -37,8 +37,8 @@ COMMON_DLL_PATHS = [
     r"C:\perfectworld\plugin\PvpAlive.dll",
 ]
 
-# 启动时一次性解析，后续调签名时直接读这个
 PVP_ALIVE_DLL_PATH = ""
+_runtime_config = None
 
 
 def _resolve_dll_path(cf) -> str:
@@ -65,19 +65,59 @@ def _resolve_dll_path(cf) -> str:
     )
 
 
-def _swap_data_sign(randnum: str, ts: str, data: str) -> str:
+def _load_config():
+    global _runtime_config
+    if _runtime_config is None:
+        _runtime_config = configparser.ConfigParser(interpolation=None)
+        _runtime_config.read("config.ini")
+    return _runtime_config
+
+
+def _get_pvp_alive_dll_path() -> str:
+    global PVP_ALIVE_DLL_PATH
+    if not PVP_ALIVE_DLL_PATH:
+        PVP_ALIVE_DLL_PATH = _resolve_dll_path(_load_config())
+    return PVP_ALIVE_DLL_PATH
+
+
+def _require_python32():
+    if not os.path.isfile(PYTHON32_EXE):
+        sys.exit(
+            f"missing 32-bit Python: {PYTHON32_EXE}\n"
+            f"sign_helper.py 需要 32 位 Python 才能加载 PvpAlive.dll。"
+            f"请从 python.org 下载 python-3.12.x-embed-win32.zip 解压到 python32/。"
+        )
+
+
+def _pure_swap_data_sign(randnum: str, ts: str, data: str) -> str:
+    prefix = hashlib.md5((randnum + ts + data).encode("utf-8")).hexdigest()
+    payload = f"{PVP_WEB_API_APPID}{prefix}{PVP_SIGN_TAIL64}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _dll_swap_data_sign(randnum: str, ts: str, data: str) -> str:
+    _require_python32()
     inner = json.dumps(
         {"randnum": randnum, "ts": ts, "data": data, "version": 1},
         separators=(",", ":"),
     )
     res = subprocess.run(
-        [PYTHON32_EXE, SIGN_HELPER, PVP_ALIVE_DLL_PATH, inner],
+        [PYTHON32_EXE, SIGN_HELPER, _get_pvp_alive_dll_path(), inner],
         capture_output=True, text=True, check=True,
     )
     sig = res.stdout.strip()
     if not sig:
         raise RuntimeError(f"swapData returned empty: {res.stderr}")
     return sig
+
+
+def _swap_data_sign(randnum: str, ts: str, data: str) -> str:
+    if os.environ.get("PWA_SIGN_BACKEND", "").strip().lower() == "dll":
+        return _dll_swap_data_sign(randnum, ts, data)
+    try:
+        return _pure_swap_data_sign(randnum, ts, data)
+    except Exception:
+        return _dll_swap_data_sign(randnum, ts, data)
 
 
 def _x_pwa_signature(steamid: str, ts: int, ip_addr: str) -> str:
@@ -212,47 +252,41 @@ def download_and_extract(url, demoPath, steamid):
     print(f"File downloaded and extracted to {demoPath}")
 
 
-if not os.path.isfile(PYTHON32_EXE):
-    sys.exit(
-        f"missing 32-bit Python: {PYTHON32_EXE}\n"
-        f"sign_helper.py 需要 32 位 Python 才能加载 PvpAlive.dll。"
-        f"请从 python.org 下载 python-3.12.x-embed-win32.zip 解压到 python32/。"
-    )
+def main():
+    global params, headers
+    cf = _load_config()
+    secs = [s for s in cf.sections() if s.lower() != "global"]
 
-cf = configparser.ConfigParser(interpolation=None)
-cf.read("config.ini")
+    for user in secs:
+        userid = cf.get(user, "userid")
+        access_token = cf.get(user, "access_token")
 
-PVP_ALIVE_DLL_PATH = _resolve_dll_path(cf)
+        params = {
+            'access_token': access_token,
+            'size': 20,
+            'uid': userid
+        }
 
-secs = [s for s in cf.sections() if s.lower() != "global"]
+        headers = {
+            'Host': 'pwaweblogin.wmpvp.com',
+            'x-pwa-steamid': userid,
+            'pwasteamid': userid,
+            'User-Agent': USER_AGENT,
+        }
 
-for user in secs:
-    options = cf.options(user)
-    userid = cf.get(user, "userid")
-    access_token = cf.get(user, "access_token")
+        match_ids = get_matchids(url_getmatchid)
 
-    params = {
-        'access_token': access_token,
-        'size': 20,
-        'uid': userid
-    }
+        demo_urls = {}
+        for match_id in match_ids:
+            demo_url = get_demo_url(match_id, access_token)
+            demo_urls[match_id] = demo_url
 
-    headers = {
-        'Host': 'pwaweblogin.wmpvp.com',
-        'x-pwa-steamid': userid,
-        'pwasteamid': userid,
-        'User-Agent': USER_AGENT,
-    }
+        for match_id, demo_url in demo_urls.items():
+            print(f"Demo URL for match {match_id}: {demo_url}")
 
-    match_ids = get_matchids(url_getmatchid)
+        for _, demo_url in demo_urls.items():
+            download_and_extract(demo_url, cf.get(user, "demoPath"), userid)
 
-    demo_urls = {}
-    for match_id in match_ids:
-        demo_url = get_demo_url(match_id, access_token)
-        demo_urls[match_id] = demo_url
 
-    for match_id, demo_url in demo_urls.items():
-        print(f"Demo URL for match {match_id}: {demo_url}")
-
-    for _, demo_url in demo_urls.items():
-        download_and_extract(demo_url, cf.get(user, "demoPath"), userid)
+if __name__ == "__main__":
+    main()

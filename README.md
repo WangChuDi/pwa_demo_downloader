@@ -3,26 +3,14 @@
 完美对战平台 (Perfect World Arena) CSGO demo 自动下载工具，支持多用户。
 Automatically downloads CSGO demos from the Perfect World Arena platform.
 
-## 工作原理 / Background
-
-完美客户端 `>= 1.0.26051411` 起，demo 下载 URL 的签名被搬进了反作弊 DLL `PvpAlive.dll`，并用 VMProtect 虚拟化保护，无法纯 Python 复现。本工具通过 `ctypes` 调用 `PvpAlive.dll` 的 `swapData` 导出函数完成签名。该 DLL 是 32 位 PE，所以签名桥接脚本必须用 32 位 Python 运行。
-
-主进程跑你自己的 Python (3.10+，任意位宽)，签名时 spawn `python32/python.exe sign_helper.py`。
-
 ## 一次性准备 / Setup
 
-1. **PvpAlive.dll 路径**：程序会按常见默认安装位置自动探测（`D:\ProgramFile\game\perfectworld\plugin\`、`C:\Program Files\perfectworld\plugin\` 等）。装在其他位置时，在 `config.ini` 的 `[global]` 段填 `pvp_alive_dll = <绝对路径>` 覆盖（见第 4 步）。
-   - 不知道客户端在哪？右键桌面/任务栏「完美对战平台」快捷方式 → 打开文件所在位置；或 Windows 搜索栏直接搜 `PvpAlive.dll`。
-2. **32 位 Python**：从 https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-win32.zip 下载 embeddable 包，解压到项目根目录下，使 `python32/python.exe` 存在。**必须是 `win32`，不能是 `amd64`**。
-3. **主环境依赖**：
+1. **主环境依赖**：
    ```
    pip install requests cryptography
    ```
-4. **配置**：复制 `config.ini.example` 为 `config.ini`，按需填写。`[global]` 段可选（用于覆盖 DLL 路径），每个用户一个 `[section]`：
+2. **配置**：复制 `config.ini.example` 为 `config.ini`，按需填写。每个用户一个 `[section]`：
    ```ini
-   [global]
-   pvp_alive_dll = D:\ProgramFile\game\perfectworld\plugin\PvpAlive.dll
-
    [user1]
    userid=76561198159976336
    access_token=xxxxxxxx...
